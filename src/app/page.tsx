@@ -1,101 +1,199 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, { useState, useEffect } from "react";
+import "./globals.css"; // Import the CSS module
+import openai from "openai";
+import { ChatHeader } from "./components/ChatHeader";
+import { ChatMessages } from "./components/ChatMessages";
+import { ChatInput } from "./components/ChatInput";
+interface Message {
+  role: "user" | "model";
+  content: string;
+  imageUrl?: string;
+}
+
+export default function ChatInterface() {
+  const [messages, setMessages] = useState<Message[]>([
+    { role: "user", content: "" },
+  ]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isFirstRender, setIsFirstRender] = useState(true);
+  const [initialModelMessage, setInitialModelMessage] =
+    useState<Message | null>(null);
+  const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+  const openaiClient = apiKey
+    ? new openai.OpenAI({ apiKey, dangerouslyAllowBrowser: true })
+    : null;
+
+  // System role prompt
+  const systemPrompt = `You are a helpful assistant that will help the user design any type of furniture including wallbeds. You are an expert in wallbed designs, and will try to help the user create a very innovative and creative wallbed, while you can still create images and give information regarding other types of furniture. You will try to generate a picture of the furniture if the user asks for it. If the user provides some information about the furniture such as color, size, style, material, lights, or cabinets you will try to incorportate that information in the image that you create. If the user asks for a picture, but does not provide any details you will create a generic furniture design. After you create a furniture you will tell the user that the image is a basic version, and to get the exact furniture they want, they should provide you with more specific information. You will provide advice on furniture design, answer questions about material, size, style, and other related questions. You will never engage in topics that are not related to wallbeds or furniture. Ensure that the generated images do not have any text, words, or writings on them. Keep your responses detailed but consise.`;
+
+  useEffect(() => {
+    if (messages.length === 1 && isFirstRender) {
+      setTimeout(() => {
+        setInitialModelMessage({
+          role: "model",
+          content:
+            "Hi there! I'm a custom wallbed generator. How can I help you with your wallbed design today?",
+        });
+        setIsFirstRender(false);
+      }, 500);
+    }
+  }, [messages, isFirstRender]);
+
+  async function sendMessage(newMessage: string) {
+    if (!newMessage.trim()) return;
+
+    const userMessage: Message = {
+      role: "user" as const,
+      content: newMessage,
+    };
+
+    setMessages((prevMessages) => [...prevMessages, userMessage]);
+    setInput("");
+    setIsLoading(true);
+
+    if (!openaiClient) {
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        {
+          role: "model" as const,
+          content:
+            "OpenAI API key not found. Please ensure NEXT_PUBLIC_OPENAI_API_KEY is set in .env.local",
+        },
+      ]);
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const chatMessages = [
+        {
+          role: "system" as const,
+          content: systemPrompt,
+        },
+        ...messages.slice(1).map((message) => ({
+          role:
+            message.role === "user"
+              ? ("user" as const)
+              : ("assistant" as const),
+          content: message.content,
+        })),
+        {
+          role: "user" as const,
+          content: newMessage,
+        },
+      ];
+
+      const chatResponse = await openaiClient.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: chatMessages,
+      });
+
+      let modelMessage = chatResponse.choices[0].message.content;
+      let imageUrls: string[] = [];
+      if (
+        modelMessage &&
+        (modelMessage.toLowerCase().includes("image") ||
+          modelMessage.toLowerCase().includes("picture") ||
+          newMessage.toLowerCase().includes("image") ||
+          newMessage.toLowerCase().includes("picture") ||
+          newMessage.toLowerCase().includes("show me") ||
+          modelMessage.toLowerCase().includes("wallbed") ||
+          newMessage.toLowerCase().includes("wallbed"))
+      ) {
+        try {
+          const imageResponse = await openaiClient.images.generate({
+            prompt: `${systemPrompt} ${newMessage} , Ensure that the generated images do not have any text, words, or writings on them.`,
+            size: "1024x1024",
+            quality: "standard",
+            n: 1,
+            model: "dall-e-3",
+          });
+          imageUrls = imageResponse.data
+            .map((item) => item?.url)
+            .filter(Boolean) as string[];
+        } catch (imageError: unknown) {
+          console.error("Image generation failed", imageError);
+          modelMessage = "I'm unable to generate images at the moment.";
+        }
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          {
+            role: "model" as const,
+            content: modelMessage
+              ? modelMessage
+              : "I'm unable to generate images at the moment.",
+            imageUrl: imageUrls[0],
+          },
+        ]);
+      } else {
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          {
+            role: "model" as const,
+            content: modelMessage
+              ? modelMessage
+              : "I am unable to process your request",
+          },
+        ]);
+      }
+    } catch (error: unknown) {
+      // Corrected catch block
+      console.error("Error sending message:", error);
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        {
+          role: "model" as const,
+          content: "Sorry, I encountered an error. Please try again.",
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+      setInitialModelMessage(null);
+    }
+  }
+
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(event.target.value);
+  };
+
+  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" && !isLoading) {
+      sendMessage(input);
+    }
+  };
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!isLoading) {
+      sendMessage(input);
+    }
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
+    <main
+      className={` min-h-screen flex flex-col items-center justify-center  bg-white`}
+    >
+      <ChatHeader />
+      <div className="flex flex-col w-full max-w-3xl h-[80vh] bg-white rounded-b-xl shadow-2xl overflow-hidden relative">
+        <ChatMessages
+          messages={messages}
+          isLoading={isLoading}
+          initialModelMessage={initialModelMessage}
         />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+        <ChatInput
+          input={input}
+          isLoading={isLoading}
+          onInputChange={handleInputChange}
+          onKeyDown={handleInputKeyDown}
+          onSubmit={handleSubmit}
+        />
+      </div>
+      <footer className="mt-4 text-center text-xs text-[#9ca3af]">
+        A creation of Murphy Al-Saham
       </footer>
-    </div>
+    </main>
   );
 }
