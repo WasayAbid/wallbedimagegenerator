@@ -47,7 +47,7 @@ export default function ChatInterface() {
         setInitialModelMessage({
           role: "model",
           content:
-            "Hi there! I'm a custom wallbed generator. How can I help you with your wallbed design today?",
+            "Hi there! I'm a custom AI Furniture Designer. How can I help you with your wallbed design today?",
         });
         setIsFirstRender(false);
       }, 500);
