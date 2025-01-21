@@ -6,6 +6,7 @@ import openai from "openai";
 import { ChatHeader } from "./components/ChatHeader";
 import { ChatMessages } from "./components/ChatMessages";
 import { ChatInput } from "./components/ChatInput";
+import { useRouter } from "next/navigation";
 interface Message {
   role: "user" | "model";
   content: string;
@@ -25,6 +26,17 @@ export default function ChatInterface() {
   const openaiClient = apiKey
     ? new openai.OpenAI({ apiKey, dangerouslyAllowBrowser: true })
     : null;
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    const loggedIn = sessionStorage.getItem("loggedIn") === "true";
+    if (!loggedIn) {
+      sessionStorage.removeItem("loggedIn"); // Clear on redirect
+      router.push("/login");
+    }
+    setIsLoggedIn(loggedIn);
+  }, [router]);
 
   // System role prompt
   const systemPrompt = `You are a helpful assistant that will help the user design any type of furniture including wallbeds. You are an expert in wallbed designs, and will try to help the user create a very innovative and creative wallbed, while you can still create images and give information regarding other types of furniture. You will try to generate a picture of the furniture if the user asks for it. If the user provides some information about the furniture such as color, size, style, material, lights, or cabinets you will try to incorportate that information in the image that you create. If the user asks for a picture, but does not provide any details you will create a generic furniture design. After you create a furniture you will tell the user that the image is a basic version, and to get the exact furniture they want, they should provide you with more specific information. You will provide advice on furniture design, answer questions about material, size, style, and other related questions. You will never engage in topics that are not related to wallbeds or furniture. Ensure that the generated images do not have any text, words, or writings on them. Keep your responses detailed but consise.`;
@@ -140,7 +152,6 @@ export default function ChatInterface() {
         ]);
       }
     } catch (error: unknown) {
-      // Corrected catch block
       console.error("Error sending message:", error);
       setMessages((prevMessages) => [
         ...prevMessages,
@@ -171,6 +182,10 @@ export default function ChatInterface() {
       sendMessage(input);
     }
   };
+
+  if (!isLoggedIn) {
+    return null;
+  }
 
   return (
     <main
